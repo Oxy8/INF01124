@@ -1,0 +1,6 @@
+[package]
+name = "beecrowd1088"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]

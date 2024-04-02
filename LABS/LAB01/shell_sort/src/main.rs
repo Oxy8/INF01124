@@ -11,7 +11,7 @@ static SHELL: [u32; 21] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,1638
 static KNUTH: [u32; 14] = [1,4,13,40,121,364,1093,3280,9841,29524,88573,265720,797161,2391484];
 static CIURA: [u32; 17] = [1,4,10,23,57,132,301,701,1577,3548,7983,17961,40412,90927,204585,460316,1035711];
 
-static SPECS: &str = "Intel(R) Core(TM) i7-3612QM CPU @ 2.10GHz (cpu cores: 4)";
+static SPECS: &str = "2.1 GHz Quad-Core Intel(R) Core(TM) i7-3612QM";
 
 fn main() {
     testes1();
@@ -45,7 +45,7 @@ fn testes1() {
     }
 
     // Escreve String de saída para o arquivo de saída.
-    write("saida1.txt", output_buffer).unwrap();
+    write("./saidas/saida1.txt", output_buffer).unwrap();
 }
 
 fn testes2() {
@@ -75,7 +75,7 @@ fn testes2() {
     }
 
     // Escreve String de saída para o arquivo de saída.
-    write("saida2.txt", output_buffer).unwrap();
+    write("./saidas/saida2.txt", output_buffer).unwrap();
 }
 
 // Escreve os resultados para a String passada como argumento.
@@ -98,7 +98,7 @@ fn shell_sort_write<T: Ord + Copy + Display>(vec: &mut [T], sequence: &[u32], se
         h_insertion_sort(vec, sequence[h] as usize);
         
         for i in 0..vec_length { write!(string_saida, "{} ", vec[i]).unwrap() };
-        writeln!(string_saida, " INCR= {}", sequence[h]).unwrap();
+        writeln!(string_saida, "INCR={}", sequence[h]).unwrap();
     }
 
 }
@@ -106,7 +106,7 @@ fn shell_sort_write<T: Ord + Copy + Display>(vec: &mut [T], sequence: &[u32], se
 fn shell_sort<T: Ord + Copy + Display>(vec: &mut [T], sequence: &[u32], sequence_name: &str, string_saida: &mut String) {
     
     // Inicio do timer.
-    let now = Instant::now();
+    let instant = Instant::now();
     //-------------------------------------
 
     let vec_length: usize = vec.len();
@@ -120,7 +120,7 @@ fn shell_sort<T: Ord + Copy + Display>(vec: &mut [T], sequence: &[u32], sequence
 
     //-------------------------------------
     // Fim do timer.
-    let tempo_exec: u128 = now.elapsed().as_nanos(); // Tempo em nanosegundos.
+    let tempo_exec: u128 = instant.elapsed().as_nanos(); // Tempo em nanosegundos.
     let tempo_exec_millis: f64 = tempo_exec as f64/1_000_000.0; // Tempo em milissegundos
 
     // Escreve resultado para a String de saida.

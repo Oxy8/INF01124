@@ -25,10 +25,10 @@ fn main() {
         input_iter.map(|n| n.parse::<u32>().unwrap()).collect_into(&mut to_be_sorted);
 
 
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_mo3_partitioner, saida_hoare_mediana);
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_random_partitioner, saida_hoare_aleatorio);
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_mo3_partitioner, saida_lomuto_mediana);
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_random_partitioner, saida_lomuto_aleatorio);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_mo3_partitioner, &mut saida_hoare_mediana);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_random_partitioner, &mut saida_hoare_aleatorio);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_mo3_partitioner, &mut saida_lomuto_mediana);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_random_partitioner, &mut saida_lomuto_aleatorio);
         
     }
 
@@ -41,7 +41,7 @@ fn main() {
 }
 
 
-fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, &mut u32, fn(&[T]) -> usize), partitioner_element_f: fn(&[T]) -> usize, string_saida: &mut String) {
+fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, &mut u32, fn(&[T]) -> usize) -> usize, partitioner_element_f: fn(&[T]) -> usize, string_saida: &mut String) {
     let vec_length = vec.len();
     
     // Inicio do timer.
@@ -51,7 +51,8 @@ fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_sche
     let mut n_recursions: u32 = 0;
     //-------------------------------------
 
-    partitioning_scheme_f(vec, &mut n_swaps, &mut n_recursions, partitioner_element_f);
+    quicksort(vec, partitioning_scheme_f, partitioner_element_f, &mut n_swaps, &mut n_recursions);
+    
 
     //-------------------------------------
     // Fim do timer.
@@ -62,15 +63,42 @@ fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_sche
     writeln!(string_saida, "TAMANHO ENTRADA {vec_length}\nSWAPS {n_swaps}\nRECURSOES {n_recursions}\nTEMPO {exec_time_millis:.6}").unwrap();
 }
 
+fn quicksort<T: Ord + Copy>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, &mut u32, fn(&[T]) -> usize) -> usize, partitioner_element_f: fn(&[T]) -> usize, n_swaps: &mut u32, n_recursions: &mut u32) {
+  
+  if vec.len() > 1 {
+
+    let partitioner_index: usize = partitioning_scheme_f(vec, n_swaps, n_recursions, partitioner_element_f);
+    
+    quicksort(&mut vec[..partitioner_index], partitioning_scheme_f, partitioner_element_f, n_swaps, n_recursions);
+    quicksort(&mut vec[partitioner_index+1..], partitioning_scheme_f, partitioner_element_f, n_swaps, n_recursions);
+  }
+}
+
+
+
 // swap do particionador é contabilizado.
 
-fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, n_recursoes: &mut u32, partitioner_element_f: fn(&[T]) -> usize) {
+
+// These two are not recursive, they just find the partitioner element, use it to sort the vec in two parts,
+// and then returns the index of he partitioner element in the newly formed vec.
+// it may be better to just return two slices.
+
+////////////////////q
+/// 
+/// Instead of partitioning receive partitioner do it the other way around !!
+/// 
+////////////////////q
+
+
+
+// retorno é o índice do elemento particionador utilizado.
+fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, n_recursoes: &mut u32, partitioner_element_f: fn(&[T]) -> usize) -> usize {
     *n_recursoes += 1;
     
 }
 
-
-fn quicksort_lomuto<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, n_recursoes: &mut u32, partitioner_element_f: fn(&[T]) -> usize) {
+// retorno é o índice do elemento particionador utilizado.
+fn quicksort_lomuto<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, n_recursoes: &mut u32, partitioner_element_f: fn(&[T]) -> usize) -> usize {
     *n_recursoes += 1;
 
 }
@@ -80,13 +108,12 @@ fn swap_w_counter() {
 }
 
 
-
-fn get_random_partitioner<T: Ord + Copy>(vec: &[T]) {
+fn get_random_partitioner<T: Ord + Copy>(vec: &[T]) -> usize {
 
 }
 
 
-fn get_mo3_partitioner<T: Ord + Copy>(vec: &[T]) {
+fn get_mo3_partitioner<T: Ord + Copy>(vec: &[T]) -> usize {
 
 }
 

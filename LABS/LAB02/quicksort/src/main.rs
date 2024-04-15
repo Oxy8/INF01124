@@ -41,7 +41,7 @@ fn main() {
 }
 
 
-fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, &mut u32, fn(&[T]) -> usize) -> usize, partitioner_element_f: fn(&[T]) -> usize, string_saida: &mut String) {
+fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, fn(&[T]) -> usize) -> usize, partitioning_element_f: fn(&[T]) -> usize, string_saida: &mut String) {
     let vec_length = vec.len();
     
     // Inicio do timer.
@@ -51,7 +51,7 @@ fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_sche
     let mut n_recursions: u32 = 0;
     //-------------------------------------
 
-    quicksort(vec, partitioning_scheme_f, partitioner_element_f, &mut n_swaps, &mut n_recursions);
+    quicksort(vec, partitioning_scheme_f, partitioning_element_f, &mut n_swaps, &mut n_recursions);
     
 
     //-------------------------------------
@@ -63,48 +63,60 @@ fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_sche
     writeln!(string_saida, "TAMANHO ENTRADA {vec_length}\nSWAPS {n_swaps}\nRECURSOES {n_recursions}\nTEMPO {exec_time_millis:.6}").unwrap();
 }
 
-fn quicksort<T: Ord + Copy>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, &mut u32, fn(&[T]) -> usize) -> usize, partitioner_element_f: fn(&[T]) -> usize, n_swaps: &mut u32, n_recursions: &mut u32) {
-  
+fn quicksort<T: Ord + Copy>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, fn(&[T]) -> usize) -> usize, partitioning_element_f: fn(&[T]) -> usize, n_swaps: &mut u32, n_recursions: &mut u32) {
+    *n_recursions += 1;
+  // Maybe if vec.len() > 0 ?? need it to behave as in the c code.
   if vec.len() > 1 {
 
-    let partitioner_index: usize = partitioning_scheme_f(vec, n_swaps, n_recursions, partitioner_element_f);
+    let partitioner_index: usize = partitioning_scheme_f(vec, n_swaps, partitioning_element_f);
     
-    quicksort(&mut vec[..partitioner_index], partitioning_scheme_f, partitioner_element_f, n_swaps, n_recursions);
-    quicksort(&mut vec[partitioner_index+1..], partitioning_scheme_f, partitioner_element_f, n_swaps, n_recursions);
+    quicksort(&mut vec[..partitioner_index], partitioning_scheme_f, partitioning_element_f, n_swaps, n_recursions);
+    quicksort(&mut vec[partitioner_index+1..], partitioning_scheme_f, partitioning_element_f, n_swaps, n_recursions);
   }
 }
 
 
+// retorno é o índice do elemento particionador utilizado.
+fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, partitioning_element_f: fn(&[T]) -> usize) -> usize {
 
-// swap do particionador é contabilizado.
+    let partitioning_element_index = partitioning_element_f(vec);
 
+    loop {
+        let left: usize = vec.iter().position(|&x| x > vec[partitioning_element_index]).unwrap();
+        let right: usize = vec.iter().rposition(|&x| x < vec[partitioning_element_index]).unwrap(); 
 
-// These two are not recursive, they just find the partitioner element, use it to sort the vec in two parts,
-// and then returns the index of he partitioner element in the newly formed vec.
-// it may be better to just return two slices.
+        if left >= right {
+            break;
+        }
+        else {
+            vec.swap(left, right);
+            *n_swaps += 1;
+        }
 
-////////////////////q
-/// 
-/// Instead of partitioning receive partitioner do it the other way around !!
-/// 
-////////////////////q
-
-
+    }
+    return partitioning_element_index;    
+}
 
 // retorno é o índice do elemento particionador utilizado.
-fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, n_recursoes: &mut u32, partitioner_element_f: fn(&[T]) -> usize) -> usize {
-    *n_recursoes += 1;
+fn quicksort_lomuto<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, partitioning_element_f: fn(&[T]) -> usize) -> usize {
     
-}
+    let partitioning_element_index = partitioning_element_f(vec);
 
-// retorno é o índice do elemento particionador utilizado.
-fn quicksort_lomuto<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, n_recursoes: &mut u32, partitioner_element_f: fn(&[T]) -> usize) -> usize {
-    *n_recursoes += 1;
 
-}
 
-fn swap_w_counter() {
+    let mut vec_iterator = vec.iter();
+    let mut bt_start: usize = vec_iterator.position(|&x| x > vec[partitioning_element_index]).unwrap();    
 
+    loop {
+        if let Some(p) = vec_iterator.position(|&x| x < vec[partitioning_element_index]) {
+            vec.swap(p, bt_start);
+            bt_start += 1;
+        } else {
+            break;
+        }
+    }
+
+    return partitioning_element_index; 
 }
 
 

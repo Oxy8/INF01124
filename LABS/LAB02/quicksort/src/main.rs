@@ -25,10 +25,10 @@ fn main() {
         input_iter.map(|n| n.parse::<u32>().unwrap()).collect_into(&mut to_be_sorted);
 
 
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_mo3_partitioner, &mut saida_hoare_mediana);
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_random_partitioner, &mut saida_hoare_aleatorio);
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_mo3_partitioner, &mut saida_lomuto_mediana);
-        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_random_partitioner, &mut saida_lomuto_aleatorio);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_mo3_pivot, &mut saida_hoare_mediana);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_hoare, get_random_pivot, &mut saida_hoare_aleatorio);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_mo3_pivot, &mut saida_lomuto_mediana);
+        benchmark_quicksort(&mut to_be_sorted.clone(), quicksort_lomuto, get_random_pivot, &mut saida_lomuto_aleatorio);
         
     }
 
@@ -41,7 +41,7 @@ fn main() {
 }
 
 
-fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, fn(&[T]) -> usize) -> usize, partitioning_element_f: fn(&[T]) -> usize, string_saida: &mut String) {
+fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, fn(&[T]) -> usize) -> usize, pivot_selector_f: fn(&[T]) -> usize, string_saida: &mut String) {
     let vec_length = vec.len();
     
     // Inicio do timer.
@@ -51,9 +51,8 @@ fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_sche
     let mut n_recursions: u32 = 0;
     //-------------------------------------
 
-    quicksort(vec, partitioning_scheme_f, partitioning_element_f, &mut n_swaps, &mut n_recursions);
+    quicksort(vec, partitioning_scheme_f, pivot_selector_f, &mut n_swaps, &mut n_recursions);
     
-
     //-------------------------------------
     // Fim do timer.
     let exec_time: u128 = timer.elapsed().as_nanos(); // Tempo em nanosegundos.
@@ -63,27 +62,27 @@ fn benchmark_quicksort<T: Ord + Copy + Display>(vec: &mut [T], partitioning_sche
     writeln!(string_saida, "TAMANHO ENTRADA {vec_length}\nSWAPS {n_swaps}\nRECURSOES {n_recursions}\nTEMPO {exec_time_millis:.6}").unwrap();
 }
 
-fn quicksort<T: Ord + Copy>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, fn(&[T]) -> usize) -> usize, partitioning_element_f: fn(&[T]) -> usize, n_swaps: &mut u32, n_recursions: &mut u32) {
+fn quicksort<T: Ord + Copy>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], &mut u32, fn(&[T]) -> usize) -> usize, pivot_selector_f: fn(&[T]) -> usize, n_swaps: &mut u32, n_recursions: &mut u32) {
     *n_recursions += 1;
   // Maybe if vec.len() > 0 ?? need it to behave as in the c code.
   if vec.len() > 1 {
 
-    let partitioner_index: usize = partitioning_scheme_f(vec, n_swaps, partitioning_element_f);
+    let pivot_index: usize = partitioning_scheme_f(vec, n_swaps, pivot_selector_f);
     
-    quicksort(&mut vec[..partitioner_index], partitioning_scheme_f, partitioning_element_f, n_swaps, n_recursions);
-    quicksort(&mut vec[partitioner_index+1..], partitioning_scheme_f, partitioning_element_f, n_swaps, n_recursions);
+    quicksort(&mut vec[..pivot_index], partitioning_scheme_f, pivot_selector_f, n_swaps, n_recursions);
+    quicksort(&mut vec[pivot_index+1..], partitioning_scheme_f, pivot_selector_f, n_swaps, n_recursions);
   }
 }
 
 
 // retorno é o índice do elemento particionador utilizado.
-fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, partitioning_element_f: fn(&[T]) -> usize) -> usize {
+fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, pivot_selector_f: fn(&[T]) -> usize) -> usize {
 
-    let partitioning_element_index = partitioning_element_f(vec);
+    let pivot_index = pivot_selector_f(vec);
 
     loop {
-        let left: usize = vec.iter().position(|&x| x > vec[partitioning_element_index]).unwrap();
-        let right: usize = vec.iter().rposition(|&x| x < vec[partitioning_element_index]).unwrap(); 
+        let left: usize = vec.iter().position(|&x| x > vec[pivot_index]).unwrap();
+        let right: usize = vec.iter().rposition(|&x| x < vec[pivot_index]).unwrap(); 
 
         if left >= right {
             break;
@@ -94,39 +93,54 @@ fn quicksort_hoare<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, partitioning
         }
 
     }
-    return partitioning_element_index;    
+    return pivot_index;    
 }
 
 // retorno é o índice do elemento particionador utilizado.
-fn quicksort_lomuto<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, partitioning_element_f: fn(&[T]) -> usize) -> usize {
+fn quicksort_lomuto<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32, pivot_selector_f: fn(&[T]) -> usize) -> usize {
     
-    let partitioning_element_index = partitioning_element_f(vec);
+    let pivot = pivot_selector_f(vec);
+    // Como que funciona a mediana de 3? Tem que mover o elemento para o começo da array e entao começar?
 
 
+    let pivot: T = vec[pivot_index];
 
-    let mut vec_iterator = vec.iter();
-    let mut bt_start: usize = vec_iterator.position(|&x| x > vec[partitioning_element_index]).unwrap();    
-
-    loop {
-        if let Some(p) = vec_iterator.position(|&x| x < vec[partitioning_element_index]) {
-            vec.swap(p, bt_start);
-            bt_start += 1;
-        } else {
-            break;
+    let mut i: usize = 0; // posicao do ultimo numero menor que o particionador
+    for num_pos in 0..vec.len() {
+        if vec[num_pos] < pivot {
+            vec.swap(num_pos, i);
+            i += 1;
         }
     }
 
-    return partitioning_element_index; 
+    vec.swap()
+
+
+    
+
+    return pivot_index; 
 }
 
 
-fn get_random_partitioner<T: Ord + Copy>(vec: &[T]) -> usize {
+fn get_random_pivot<T: Ord + Copy>(vec: &mut [T]) -> T {
 
 }
 
+/////////////////////////////////////////////////////////
+// um swap entre mesmos índices deve ser contabilizado?
+/////////////////////////////////////////////////////////
+fn get_mo3_pivot<T: Ord + Copy>(vec: &mut [T], n_swaps: &mut u32) -> T {
+    // acha qual dos 3 é a mediana.
+    // este valor deve ser movido para a primeira posição.
+    // continuamos a partir dai, iterando a partir do indice 1 (2ª pos).
 
-fn get_mo3_partitioner<T: Ord + Copy>(vec: &[T]) -> usize {
+    let mut ord: [usize; 3] = [0, vec.len()/2, vec.len()];
+    ord.sort_by_key(|&pos| vec[pos]);
 
+    vec.swap(0, ord[1]);
+
+
+    return vec[0];
 }
 
 

@@ -1,6 +1,91 @@
 fn main() {
-    println!("Hello, world!");
+    let vec = vec! ["apple", "apricot", "apex", "apartment", "apology", "apparatus", "appendix", "applicant", "appliance", "appoint"];
+
+    let mut aux: Vec<&[u8]> = vec.iter().map(|&str| str.as_bytes()).collect();
+    radix_sort_msd(&mut aux, 0);
+
+    for item in aux {
+        println!("{}", std::str::from_utf8(item).unwrap());
+    }
+
 }
+
+
+
+// tenho que ler o primeira caractere de cada palavra.
+
+// usar enésimo caractere como índice
+
+fn radix_sort_msd(vec: &mut [&[u8]], pos: usize) {
+    
+    let vec_len = vec.len();
+
+    if vec_len == 0 {
+        return;
+    }
+
+    let mut count: Vec<usize> = vec![0; 256];
+    let mut too_short: usize = 0; // contador de palavras que são pequenas demais para serem ordenadas.
+
+    // calcula frequencia
+    for &mut string in &mut *vec {
+        if let Some(c) = char_at(string, pos) {
+            count[c as usize] += 1;
+        }
+        else {
+            too_short += 1;
+        }
+    }
+
+    // converte frequencias em acumuladores
+    count[0] += too_short;
+    for val_index in 1..256 {
+        count[val_index] += count[val_index-1];
+    }
+
+    // distribui no vetor auxiliar.
+    let mut aux: Vec<&[u8]> = vec![&[0]; vec_len];
+    for &string in vec.iter().rev() {
+        if let Some(c) = char_at(string, pos) {
+            aux[count[c as usize] - 1] = string;
+            count[c as usize] -= 1;
+        }
+        else {
+            aux[too_short-1] = string;
+            too_short -= 1;
+        }
+    }
+
+    // copia de volta para vec
+    for pos in 0..vec_len {
+        vec[pos] = aux[pos];
+    }
+
+    // recursão
+    count.push(vec_len);
+    for char in 0..256 {
+        radix_sort_msd(&mut vec[count[char]..count[char+1]], pos+1); 
+    }
+
+}
+
+
+
+fn char_at(string: &[u8], pos: usize) -> Option<u8> {
+    if pos >= string.len() {
+        return None;
+    }
+    else {
+        return Some(string[pos]);
+    }
+}
+
+
+
+
+
+
+
 // Esperado 78k palavras.
 // fazer leitura dos arquivos em 3 etapas, permite isolar testes.
 // não ler tudo na memória (pelos menos n teste 2). ler linha por linha.

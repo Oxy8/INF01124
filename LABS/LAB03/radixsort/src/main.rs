@@ -1,31 +1,39 @@
+use std::fs::{read_to_string, write};
+use std::fmt::Write;
+use std::vec;
+
 fn main() {
-    let vec = vec! ["apple", "apricot", "apex", "apartment", "apology", "apparatus", "appendix", "applicant", "appliance", "appoint"];
 
-    let mut aux: Vec<&[u8]> = vec.iter().map(|&str| str.as_bytes()).collect();
-    radix_sort_msd(&mut aux, 0);
+    // 1.2
+    let input_frankenstein = read_to_string("./entradas/frankenstein.txt").unwrap();
+    ordena_palavras_arquivo(input_frankenstein, "./saidas/frankenstein_sorted.txt");
+    let input_war_and_peace = read_to_string("./entradas/war_and_peace.txt").unwrap();
+    ordena_palavras_arquivo(input_war_and_peace, "./saidas/war_and_peace_sorted.txt");
 
-    for item in aux {
-        println!("{}", std::str::from_utf8(item).unwrap());
-    }
+
+    // 1.3
+    let input_frankenstein_sorted = read_to_string("./saidas/frankenstein_sorted.txt").unwrap();
+    conta_palavras_arquivo(input_frankenstein_sorted, "./saidas/frankenstein_counted.txt");
+    let input_war_and_peace_sorted = read_to_string("./saidas/war_and_peace_sorted.txt").unwrap();
+    conta_palavras_arquivo(input_war_and_peace_sorted, "./saidas/war_and_peace_counted.txt");
+
+
+    // 1.4
+    let input_frankenstein_counted = read_to_string("./saidas/frankenstein_counted.txt").unwrap();
+    gera_ranking_palavras_arquivo(input_frankenstein_counted, "./saidas/frankenstein_ranked.txt");
+    let input_war_and_peace_counted = read_to_string("./saidas/war_and_peace_counted.txt").unwrap();
+    gera_ranking_palavras_arquivo(input_war_and_peace_counted, "./saidas/war_and_peace_ranked.txt");
 
 }
 
 
-
-// tenho que ler o primeira caractere de cada palavra.
-
-// usar enésimo caractere como índice
-
 fn radix_sort_msd(vec: &mut [&[u8]], pos: usize) {
     
     let vec_len = vec.len();
-
-    if vec_len == 0 {
-        return;
-    }
+    if vec_len <= 1 { return; }
 
     let mut count: Vec<usize> = vec![0; 256];
-    let mut too_short: usize = 0; // contador de palavras que são pequenas demais para serem ordenadas.
+    let mut too_short: usize = 0;
 
     // calcula frequencia
     for &mut string in &mut *vec {
@@ -57,9 +65,7 @@ fn radix_sort_msd(vec: &mut [&[u8]], pos: usize) {
     }
 
     // copia de volta para vec
-    for pos in 0..vec_len {
-        vec[pos] = aux[pos];
-    }
+    vec.copy_from_slice(&aux);
 
     // recursão
     count.push(vec_len);
@@ -82,98 +88,133 @@ fn char_at(string: &[u8], pos: usize) -> Option<u8> {
 
 
 
+fn ordena_palavras_arquivo(input: String, path: &str) {
+
+    let mut vec: Vec<&[u8]> = input
+        .split_whitespace()
+        .map(|string| string.as_bytes())
+        .collect();
+
+    radix_sort_msd(&mut vec, 0);
+
+    let mut output_buffer = String::new();
+    for item in vec {
+        writeln!(output_buffer, "{}", std::str::from_utf8(item).unwrap()).unwrap();
+    }
+    write(path, output_buffer).unwrap();
+
+}
 
 
 
+fn conta_palavras_arquivo(input: String, path: &str) {
 
-// Esperado 78k palavras.
-// fazer leitura dos arquivos em 3 etapas, permite isolar testes.
-// não ler tudo na memória (pelos menos n teste 2). ler linha por linha.
-// 
+    let mut vec_quantidade_palavras: Vec<u16> = Vec::new();
+    let mut lista_palavras: Vec<&str> = Vec::new();
 
-
-// Passo 1:
-// Le e ordena palavras (usar radix sort)
-
-// Passo 2:
-// Le linha, se valor igual ao último, add 1 ao último.
-// Senão, criar nova Struct na array com o nome da string e o numero 1 do lado
-
-// Passo 3:
-
-
-// MSD Alg:
-/*
-Ve primeira Letra
-Coloca em Buckets
-(como fazer para evitar alocação de novos vetores e ao invés, fazer inplace
-usando slices do rust.)
-
-
-
-
-///////////////////////////////////////////////////////////////
-/// Computando frequencia do caractere D (montando balde de cada caracter)
-/// 
-/// Distribute = joga para balde 
-/// copy back = coloca no vetor na ordem
-/// 
-/// 
-/// R+2 para que possamos somar sem o risco de invadir espaço extra
-/// Provavelmente não necessário se implementar usando windows.
-/// 
-///////////////////////////////////////////////////////////////
-
-
- // sort from a[lo] to a[hi], starting at the dth character
-    private static void sort(String[] a, int lo, int hi, int d, String[] aux) {
-
-        // compute frequency counts
-        int[] count = new int[R+2];
-        for (int i = lo; i <= hi; i++) {
-            int c = charAt(a[i], d);
-            count[c+2]++;
-        }
+    for palavra in input.split_whitespace() {
         
-        // transform counts to indices
-        for (int r = 0; r < R+1; r++)
-            count[r+1] += count[r];
-
-        // distribute
-        for (int i = lo; i <= hi; i++) {
-            int c = charAt(a[i], d);
-            aux[count[c+1]++] = a[i];
+        if lista_palavras.last().cloned().unwrap_or_default() == palavra { // default value ensures verification will fail.
+            let mut last: u16 = vec_quantidade_palavras.pop().unwrap();
+            last += 1;
+            vec_quantidade_palavras.push(last);
+        } else {
+            lista_palavras.push(palavra);
+            vec_quantidade_palavras.push(1);
         }
-
-        // copy back
-        for (int i = lo; i <= hi; i++)
-            a[i] = aux[i - lo];
-
-
-        // recursively sort for each character (excludes sentinel -1)
-        for (int r = 0; r < R; r++)
-            sort(a, lo + count[r], lo + count[r+1] - 1, d+1, aux);
     }
 
-*/
+    let mut output_buffer = String::new();
+    lista_palavras
+        .iter()
+        .zip(vec_quantidade_palavras.iter())
+        .for_each(|(&palavra, &quantidade)| {
+            writeln!(output_buffer, "{} {}", palavra, quantidade).unwrap()
+        });
+    
+    write(path, output_buffer).unwrap();
 
+}
+
+
+
+fn gera_ranking_palavras_arquivo(input: String, path: &str) {
+    let (palavras, quantidades): (Vec<&str>, Vec<&str>) = input
+        .trim()
+        .split('\n')
+        .map(|str| str.split_once(' ').unwrap())
+        .unzip();
+
+    let quantidades = quantidades
+        .iter()
+        .map(|val| val.parse::<u16>().unwrap())
+        .collect::<Vec<u16>>();
+
+    let mut vec_pares = palavras
+        .into_iter()
+        .zip(quantidades.into_iter())
+        .collect::<Vec<(&str, u16)>>();
+
+    merge_sort_tupla_rev(&mut vec_pares);
+    vec_pares.reverse();
+
+    let mut output_buffer = String::new();
+    for i in 0..2000 {
+        writeln!(output_buffer, "{} {}", vec_pares[i].0, vec_pares[i].1).unwrap()
+    }
+    
+    write(path, output_buffer).unwrap();
+}
+
+
+
+fn merge_sort_tupla_rev<A: Copy, B: Ord + Copy>(vec: &mut [(A, B)]) {
+    let vec_len = vec.len();
+    if vec_len> 1 {
+        let (mut left, mut right) = vec.split_at_mut(vec_len/2);
+        merge_sort_tupla_rev(&mut left);
+        merge_sort_tupla_rev(&mut right);
+    }
+    merge_tupla_rev(vec);
+}
+
+fn merge_tupla_rev<A: Copy, B: Ord + Copy>(vec: &mut [(A, B)]) {
+    
+    let (left, right) = vec.split_at(vec.len()/2);
+    
+    let mut aux: Vec<(A, B)> = Vec::new();
+
+    let mut i = 0;
+    let mut j = 0;
+
+    while i < left.len() && j < right.len() {
+        if left[i].1 < right[j].1 {
+            aux.push(left[i]);
+            i += 1;
+        } else {
+            aux.push(right[j]);
+            j += 1;
+        }
+    }
+
+    while i < left.len() {
+        aux.push(left[i]);
+        i += 1;
+    }
+
+    while j < right.len() {
+        aux.push(right[j]);
+        j += 1;
+    }
+
+
+    vec.copy_from_slice(&aux);
+}
 
 
 
 
 /*
-
-Parte 2 pede pra que a gente conte o numero de cada palavra que a gente tem.
-
-Mas isso meio que ja é feito na parte 1 quando vamos criando os buckets.
-Se eu segmentar o radix sort em varias funções, eu nao tenho que fazer nada adicional
-senão contar o tamanho de cada bucket (chamar slice.len()).
-// Parece um pouco bobagem fazer tudo isso, é mais fácil só ter 2 while e ir contando.
-// Existe maneira melhor que um Vec de structs, onde cada struct contem nome e quant?
-
-
-
-
-
-
+Frankenstein: 7270 palavras diferentes, 78444 palavras no total.
+War and Peace: 17601 palavras diferentes, 586447 palavras no total.
 */

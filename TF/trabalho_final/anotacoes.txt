@@ -1,0 +1,26 @@
+
+
+
+
+
+Para tags, usar hash table normal.
+
+
+
+Ler Ratings, e para cada player id, constrói contador de avaliações e acumulador de avaliações (Vec)
+Ler players e constrói TabelaHash com infos de cada players, incluindo score médio
+Itera Hash, constrói Trie.
+
+
+
+Criar tabela pra armazenar jogadores por posição (HashTable)
+
+1º: Criar tabela pra organizar Avaliações por usuário que avaliou (HashTable)
+
+Criar tabela tags??
+
+Ordenar por rating (quicksort)
+
+
+
+

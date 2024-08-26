@@ -4,14 +4,12 @@
 use std::collections::LinkedList;
 use std::vec;
 use csv::Reader;
-use std::fs::{read_to_string, write};
 use polars::prelude::*;
 use std::time::Instant;
 use tabled::{Tabled, Table};
 use std::io::Write;
 
 
-use std::collections::HashSet;
 
 
 #[derive(Clone)]
@@ -211,44 +209,35 @@ fn main() {
     }
     
     //=========================================================================
-    // Tabela Hash pras tags, Itera sobre os jogadores e vamos inserindo.
 
-    //let mut tabela_tags: TabelaHash<Vec<Jogador>> = cria_tabela_hash(2000);
-
-    let mut df_tags = CsvReadOptions::default().with_infer_schema_length(Some(0))
+    let df_tags = CsvReadOptions::default().with_infer_schema_length(Some(0))
         .try_into_reader_with_file_path(Some("./arquivos-parte1/tags.csv".into()))
         .unwrap()
         .finish()
         .unwrap();
 
-    let user_ids = df_tags.column("user_id").unwrap().str().unwrap();
     let player_ids = df_tags.column("sofifa_id").unwrap().str().unwrap();
     let tags = df_tags.column("tag").unwrap().str().unwrap();
 
-    let mut lista_tags = cria_tabela_hash(5000);
+    let mut lista_tags: Vec<&str> = Vec::new();
+    let mut lista_tags_jogadores: Vec<Vec<u32>> = vec![vec![10; 0]; 1000];
 
-    // Tem que usar TabelaHash aqui pra fazer a interseção mais tarde, senão da problema de tamanho.
-
-    for i in 0..df_tags.height() {
-        if let Some(tag) = tags.get(i) {
-            insere_tabela_hash(&mut lista_tags, tag);
-        }
-            
-    }
 
     for i in 0..df_tags.height() {
-        let user_id = user_ids.get(i).unwrap().parse::<usize>().unwrap();
         let player_id = player_ids.get(i).unwrap().parse::<u32>().unwrap();
-        //println!("{:?}", tags.get(i));
+        
         if let Some(tag) = tags.get(i) {
-            //lista_tags.insert(tag);
+
+            if let Some(position) = lista_tags.iter().position(|&t| t == tag) {
+                lista_tags_jogadores[position].push(player_id);
+            } else {
+                let position = lista_tags.len();
+                lista_tags.push(tag);
+                lista_tags_jogadores[position].push(player_id);
+            }
+
         }       
     }
-
-
-
-    println!("{:?}", lista_tags);
-    println!("{}", lista_tags.len());
 
 
     //=========================================================================
@@ -262,6 +251,9 @@ fn main() {
     //======Loop Principal=====================================================
     //=========================================================================
     
+
+    
+
     loop {
         
         print!("Insira a consulta desejada: ");
@@ -313,7 +305,8 @@ fn main() {
                         }
                     }
                     "tags" => {
-                        
+                        let tags = parse_apostrophe_quoted_strings(arg);
+                        pesquisa_4(lista_tags.clone(), lista_tags_jogadores.clone(), &mut tabela_jogadores, &tags);
                     }
                     _ => println!("Comando desconhecido."),
                 }
@@ -344,6 +337,8 @@ fn pesquisa_1(arvore_trie: NodoTrie, tabela_jogadores: &mut TabelaHash<Jogador>,
         let jogador = busca_tabela_hash(tabela_jogadores, player_id as usize).unwrap().clone();
         vec_players.push(jogador);
     }
+
+    quicksort(&mut vec_players, quicksort_hoare, get_mo3_pivot);
 
     let table = Table::new(vec_players).to_string();
     println!("{}", table);
@@ -385,6 +380,84 @@ fn pesquisa_3(vetor_posicoes: Vec<Vec<Jogador>>, posicao: &str, len: usize) {
     }
     let table = Table::new(posicao2).to_string();
     println!("{}", table);
+}
+
+fn pesquisa_4(lista_tags: Vec<&str>, lista_tags_jogadores: Vec<Vec<u32>>, tabela_jogadores: &mut TabelaHash<Jogador>, tags: &[&str]) {
+    //pega tags particiona elas, acessa em lista_tags_jogadores cada uma delas,
+    // faz a intersecção das tags selecionadas e finalmente converte de ids pra jogadores e joga na tela.
+    let mut lista_tags_jogadores_selecionadas: Vec<Vec<u32>> = Vec::new();
+    
+    for &tag in tags {
+        if let Some(position) = lista_tags.iter().position(|&t| t == tag) {
+            lista_tags_jogadores_selecionadas.push(lista_tags_jogadores[position].clone());
+        }
+    }
+
+    let mut intersecao = intersect_vectors(lista_tags_jogadores_selecionadas);
+    intersecao.dedup();
+
+    println!("\n{:?}\n", intersecao);
+
+    let mut players: Vec<Jogador> = Vec::new();
+    for id in intersecao {
+        let jogador = busca_tabela_hash(tabela_jogadores, id as usize).unwrap();
+        players.push(jogador.clone());
+    }
+
+    quicksort(&mut players, quicksort_hoare, get_mo3_pivot);
+
+    let table = Table::new(players).to_string();
+    println!("{}", table);
+
+}
+
+fn intersect_vectors(vectors: Vec<Vec<u32>>) -> Vec<u32> {
+    if vectors.is_empty() {
+        return Vec::new();
+    }
+
+    let first_vec = &vectors[0];
+
+    let mut common_elements = Vec::new();
+
+    for &item in first_vec {
+        if vectors.iter().all(|vec| vec.contains(&item)) {
+            common_elements.push(item);
+        }
+    }
+
+    return common_elements;
+}
+
+fn parse_apostrophe_quoted_strings(input: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut in_quotes = false;
+    let mut start_idx = None;
+
+    for (i, ch) in input.char_indices() {
+        match ch {
+            '\'' => {
+                if in_quotes {
+                    if let Some(start) = start_idx {
+                        result.push(&input[start..i]);
+                        start_idx = None;
+                    }
+                } else {
+                    start_idx = Some(i + 1); // Start after the quote
+                }
+                in_quotes = !in_quotes;
+            }
+            ' ' if !in_quotes => {}
+            _ => {}
+        }
+    }
+
+    // Handle case where input might end with a quote
+    if in_quotes && start_idx.is_some() {
+        result.push(&input[start_idx.unwrap()..]);
+    }
+
+    result
 }
 
 fn position_to_index(positions: &[&str]) -> Vec<usize> {

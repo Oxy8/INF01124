@@ -1,10 +1,17 @@
+#![feature(iter_collect_into)]
+#![feature(let_chains)]
+
 use std::collections::LinkedList;
 use std::vec;
 use csv::Reader;
 use std::fs::{read_to_string, write};
-use std::fmt::{Write, Display};
 use polars::prelude::*;
 use std::time::Instant;
+use tabled::{Tabled, Table};
+use std::io::Write;
+
+
+use std::collections::HashSet;
 
 
 #[derive(Clone)]
@@ -13,7 +20,7 @@ struct AccContador {
     contador: usize,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Default, Debug)]
 struct TabelaHash<T: Tabelavel + Clone> {
     tamanho: usize,
     tabela: Vec<LinkedList<T>>
@@ -22,27 +29,130 @@ struct TabelaHash<T: Tabelavel + Clone> {
 trait Tabelavel {
     fn chave(&self) ->  usize;
 }
-#[derive(Clone, Debug)]
+
+#[derive(Clone, Default, Debug, Tabled)]
 struct Jogador {
-    sofifa_id: usize,
-    name: String,
+    sofifa_id: u32,
+    short_name: String,
+    long_name: String,
     player_positions: String,
+    nationality: String,
+    club_name: String,
+    league_name: String,
     number_ratings: usize,
     ratings_sum: f64,
+    #[tabled(display_with = "format_float")]
+    average_rating: f32
 }
 
-impl Tabelavel for Jogador {
-    fn chave(&self) -> usize {
-        return self.sofifa_id;
+
+
+impl PartialEq for Jogador {
+    fn eq(&self, other: &Self) -> bool {
+        self.average_rating.eq(&other.average_rating)
     }
 }
 
 
+impl PartialOrd for Jogador {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        other.average_rating.partial_cmp(&self.average_rating)
+        // Invertido de propósito pra não precisar lidar com inversão do quicksort 
+        // e nem precisar usar rev(), o que prejudicaria a performance.
+    }
+}
+
+
+impl Tabelavel for Jogador {
+    fn chave(&self) -> usize {
+        return self.sofifa_id as usize;
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+struct NodoTrie {
+    letra: char,
+    fim_de_palavra: u32, // if != 0, contains player id.
+    children: TabelaHash<NodoTrie>,
+}
+
+impl Tabelavel for NodoTrie {
+    fn chave(&self) -> usize {
+        return self.letra as usize;
+    }
+}
+
+#[derive(Clone, Default, Debug, Copy)]
+struct Avaliacao {
+    sofifa_id: u32,
+    rating: f32,
+}
+
+#[derive(Clone, Default, Debug, Tabled)]
+struct AvaliacaoDetalhada {
+    sofifa_id: u32,
+    short_name: String,
+    long_name: String,
+    #[tabled(display_with = "format_float")]
+    global_rating: f32,
+    number_ratings: usize,
+    rating: f32,
+}
+
+fn format_float(value: &f32) -> String {
+    format!("{:.6}", value)
+}
+
+
+impl PartialEq for AvaliacaoDetalhada {
+    fn eq(&self, other: &Self) -> bool {
+        (self.rating.eq(&other.rating) && self.global_rating.eq(&other.global_rating))
+    }
+}
+
+
+impl PartialOrd for AvaliacaoDetalhada {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if other.rating == self.rating {
+            other.global_rating.partial_cmp(&self.global_rating)    
+        } else {
+            other.rating.partial_cmp(&self.rating)
+        }
+        // Invertido de propósito pra não precisar lidar com inversão do quicksort 
+        // e nem precisar usar rev(), o que prejudicaria a performance.
+    }
+}
+
+impl Tabelavel for &str {
+    fn chave(&self) -> usize {
+        return hash_string(self) as usize;
+    }
+}
+
+fn hash_string(s: &str) -> u64 {
+    let mut hash: u64 = 0;
+    let prime: u64 = 31;
+    for byte in s.bytes() {
+        hash = hash.wrapping_mul(prime).wrapping_add(byte as u64);
+    }
+    return hash;
+}
+
 fn main() { 
     
+    
+    //=========================================================================
+    //======Construção das Estruturas==========================================
+    //=========================================================================
+
+    //=========================================================================
     // Inicio do timer.
     let timer = Instant::now();
-    //-------------------------------------
+    //=========================================================================
+
+    let jogadores = read_jogadores("./arquivos-parte1/players.csv").unwrap();
+    let mut tabela_jogadores = constroi_tabela_hash(10000, jogadores.clone());
+
 
     let mut df = CsvReadOptions::default().with_infer_schema_length(Some(0))
         .try_into_reader_with_file_path(Some("./arquivos-parte1/rating.csv".into()))
@@ -50,57 +160,323 @@ fn main() {
         .finish()
         .unwrap();
 
+    let mut vec_avaliacoes: Vec<Vec<Avaliacao>> = vec![vec![Avaliacao{..Default::default()}; 0]; 140000];
+    let mut vec_acc_contador: Vec<AccContador> = vec![AccContador { acc: 0.0, contador: 0 }; 260000];
 
-    let jogadores = read_jogadores("./arquivos-parte1/players.csv").unwrap();
+    let user_ids = df.column("user_id").unwrap().str().unwrap();
+    let player_ids = df.column("sofifa_id").unwrap().str().unwrap();
+    let ratings = df.column("rating").unwrap().str().unwrap();
 
-    let mut tabela_jogadores = constroi_tabela_hash(10000, jogadores);
+    for i in 0..df.height() {
+        let user_id = user_ids.get(i).unwrap().parse::<usize>().unwrap();
+        let player_id = player_ids.get(i).unwrap().parse::<u32>().unwrap();
+        let rating = ratings.get(i).unwrap().parse::<f32>().unwrap();
+
+        vec_acc_contador[player_id as usize].acc += rating as f64;
+        vec_acc_contador[player_id as usize].contador += 1;
+
+        vec_avaliacoes[user_id].push(Avaliacao{sofifa_id: player_id, rating: rating});
     
-    let mut acc_contador: Vec<AccContador> = vec![AccContador{acc: 0.0, contador: 0}; 260000];
-    for (id, rating) in df.column("sofifa_id").unwrap().str().unwrap().into_iter().zip(df.column("rating").unwrap().str().unwrap()) {
-        // esse zip aqui encima ta horrivel, tem que melhorar isso ai.
-        acc_contador[id.unwrap().parse::<usize>().unwrap()].acc += rating.unwrap().parse::<f64>().unwrap();
-        acc_contador[id.unwrap().parse::<usize>().unwrap()].contador += 1;
     }
-
-    //==========================
-    //==========================
-    //==========================
-    // VER FAVORITOS FIREFOX
-    //==========================
-    //==========================
-    //==========================
-
-
-    let mut acc_contador: Vec<AccContador> = vec![AccContador{acc: 0.0, contador: 0}; 260000];
-    for row_index in 0..df.height() {
-        // esse zip aqui encima ta horrivel, tem que melhorar isso ai.
-        let row = df.get(row_index).unwrap();
-        let id = row[1].cast(&String);
-        acc_contador[id.unwrap().parse::<usize>().unwrap()].acc += rating.unwrap().parse::<f64>().unwrap();
-        acc_contador[id.unwrap().parse::<usize>().unwrap()].contador += 1;
-    }
-
     
+    for n in 0..vec_acc_contador.len() {
+        atualiza_rating(&mut tabela_jogadores, n,  vec_acc_contador[n].clone());
+    }
 
-    for n in 0..acc_contador.len() {
-        atualiza_rating(&mut tabela_jogadores, n,  acc_contador[n].clone());
+    let mut arvore_trie: NodoTrie = NodoTrie{letra: '#', fim_de_palavra: 0, children: cria_tabela_hash(30)};
+    for jogador in jogadores.clone() {
+        insereJogadorTrie(&mut arvore_trie, jogador);
+    }
+
+    //=========================================================================
+
+    let mut vetor_posicoes: Vec<Vec<Jogador>> = vec![vec![Jogador{..Default::default()}; 0]; 16];
+
+    for lista in &tabela_jogadores.tabela {
+        for jogador in lista {
+
+            if jogador.number_ratings >= 1000 {
+                let posicoes: Vec<&str> = jogador.player_positions.split(",").map(|pos| pos.trim()).collect();
+                let indices = position_to_index(&posicoes);
+                
+                for indice in indices {
+                    vetor_posicoes[indice].push(jogador.clone());
+                }
+            }
+        }
+    }
+
+    for posicao in &mut vetor_posicoes {
+        quicksort(posicao, quicksort_hoare, get_mo3_pivot);
+    }
+    
+    //=========================================================================
+    // Tabela Hash pras tags, Itera sobre os jogadores e vamos inserindo.
+
+    //let mut tabela_tags: TabelaHash<Vec<Jogador>> = cria_tabela_hash(2000);
+
+    let mut df_tags = CsvReadOptions::default().with_infer_schema_length(Some(0))
+        .try_into_reader_with_file_path(Some("./arquivos-parte1/tags.csv".into()))
+        .unwrap()
+        .finish()
+        .unwrap();
+
+    let user_ids = df_tags.column("user_id").unwrap().str().unwrap();
+    let player_ids = df_tags.column("sofifa_id").unwrap().str().unwrap();
+    let tags = df_tags.column("tag").unwrap().str().unwrap();
+
+    let mut lista_tags = cria_tabela_hash(5000);
+
+    // Tem que usar TabelaHash aqui pra fazer a interseção mais tarde, senão da problema de tamanho.
+
+    for i in 0..df_tags.height() {
+        if let Some(tag) = tags.get(i) {
+            insere_tabela_hash(&mut lista_tags, tag);
+        }
+            
+    }
+
+    for i in 0..df_tags.height() {
+        let user_id = user_ids.get(i).unwrap().parse::<usize>().unwrap();
+        let player_id = player_ids.get(i).unwrap().parse::<u32>().unwrap();
+        //println!("{:?}", tags.get(i));
+        if let Some(tag) = tags.get(i) {
+            //lista_tags.insert(tag);
+        }       
     }
 
 
 
+    println!("{:?}", lista_tags);
+    println!("{}", lista_tags.len());
 
-    //-------------------------------------
+
+    //=========================================================================
+    // Fim do timer.
     let exec_time: u128 = timer.elapsed().as_nanos(); // Tempo em nanosegundos.
     let exec_time_millis: f64 = exec_time as f64/1_000_000.0; // Tempo em milissegundos
-    println!("Exec time (ms) = {}", exec_time_millis);
-    
-    
-   
-   //print!("{:?}", tabela_jogadores);
+    println!("\nTempo para construção das estruturas: {:.2} ms.\n", exec_time_millis);
+    //=========================================================================
 
+    //=========================================================================
+    //======Loop Principal=====================================================
+    //=========================================================================
+    
+    loop {
+        
+        print!("Insira a consulta desejada: ");
+        std::io::stdout().flush().unwrap(); 
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim(); // 
+
+        if input.starts_with("exit") { break; }
+
+        if    input.starts_with("player")
+            ||input.starts_with("user")
+            ||input.starts_with("top")
+            ||input.starts_with("tags") {
+
+            if let Some((cmd, arg)) = input.split_once(" ") {
+                match cmd {
+                    "player" => {
+                        pesquisa_1(arvore_trie.clone(), &mut tabela_jogadores, &arg.to_lowercase());
+                    }
+                    "user" => {
+                        if let Ok(num) = arg.parse::<u32>() {
+                            pesquisa_2(&vec_avaliacoes, &mut tabela_jogadores, num);
+                        } else {
+                            println!("Não foi possível fazer o parsing de {} para um número. Tente novamente.", arg);
+                        }
+                    }
+                    "top" => {
+                        if let Some((posicao, len)) = arg.split_once(" ") {
+                            if let Ok(num) = len.parse::<u32>() {
+                                
+                                let valid_positions = vec![ "GK", "RB", "CB", "LB", "CDM", "CM", "CAM", "RM", "LM", "RW", "LW", "LWB", "CF", "ST", "CWB", "RWB" ];
+                                let upper = posicao.to_uppercase();
+                                let inter: &str = &upper;
+                                if !(valid_positions.contains(&inter)) {
+                                    println!("A posição inserida {} não é uma posição válida. Tente novamente.", posicao);
+                                    continue;
+                                }
+
+                                pesquisa_3(vetor_posicoes.clone(), inter, num as usize);
+
+                            } else {
+                                println!("Não foi possível fazer o parsing de {} para um número. Tente novamente.", len);
+                            }
+                        
+                        } else {
+                            println!("Comando inválido. Tente novamente.");
+                        }
+                    }
+                    "tags" => {
+                        
+                    }
+                    _ => println!("Comando desconhecido."),
+                }
+
+            } else {
+                println!("Comando inválido. Tente novamente.");
+                continue;
+            }
+
+        } else {
+            println!("Comando inválido. Tente novamente.");
+        }
+    }
+
+
+    // Fim do timer.
+    let exec_time: u128 = timer.elapsed().as_nanos(); // Tempo em nanosegundos.
+    let exec_time_millis: f64 = exec_time as f64/1_000_000.0; // Tempo em milissegundos
+    println!("\nTempo para construção + execução: {:.2} ms.\n", exec_time_millis);
+     
+}
+
+fn pesquisa_1(arvore_trie: NodoTrie, tabela_jogadores: &mut TabelaHash<Jogador>, prefixo: &str) {
+    let vec_player_ids: Vec<u32> = obtem_jogadores_trie(arvore_trie, prefixo).unwrap_or_default();
+    let mut vec_players: Vec<Jogador> = Vec::new();
+
+    for player_id in vec_player_ids {
+        let jogador = busca_tabela_hash(tabela_jogadores, player_id as usize).unwrap().clone();
+        vec_players.push(jogador);
+    }
+
+    let table = Table::new(vec_players).to_string();
+    println!("{}", table);
 
 }
 
+fn pesquisa_2(vec_avaliacoes: &Vec<Vec<Avaliacao>>, tabela_jogadores: &mut TabelaHash<Jogador>, user_id: u32) {
+
+    let vec_avaliacoes_user: Vec<Avaliacao> = vec_avaliacoes[user_id as usize].clone();
+    let mut vec_avaliacoes_detalhadas_user: Vec<AvaliacaoDetalhada> = vec_avaliacoes_user.iter().map(|a| obtem_avaliacao_detalhada(a, tabela_jogadores)).collect();
+    quicksort(&mut vec_avaliacoes_detalhadas_user, quicksort_hoare, get_mo3_pivot);
+    vec_avaliacoes_detalhadas_user.truncate(20);
+
+    let table = Table::new(vec_avaliacoes_detalhadas_user).to_string();
+    println!("{}", table);
+
+    fn obtem_avaliacao_detalhada(avaliacao: &Avaliacao, tabela_jogadores: &mut TabelaHash<Jogador>) -> AvaliacaoDetalhada {
+        
+        let jogador: &mut Jogador = busca_tabela_hash(tabela_jogadores, avaliacao.sofifa_id as usize).unwrap();
+        return AvaliacaoDetalhada{
+            sofifa_id: avaliacao.sofifa_id,
+            short_name: jogador.short_name.clone(),
+            long_name: jogador.long_name.clone(),
+            rating: avaliacao.rating,
+            number_ratings: jogador.number_ratings,
+            global_rating: jogador.average_rating,
+        }
+    }
+    
+}
+
+fn pesquisa_3(vetor_posicoes: Vec<Vec<Jogador>>, posicao: &str, len: usize) {
+
+    let index = position_to_index(&[posicao]);
+    let posicao = &vetor_posicoes[index[0]];
+    let mut posicao2: Vec<Jogador> = Vec::new();
+    for i in 0..len {
+        posicao2.push(posicao[i].clone());
+    }
+    let table = Table::new(posicao2).to_string();
+    println!("{}", table);
+}
+
+fn position_to_index(positions: &[&str]) -> Vec<usize> {
+    let valid_positions = vec![ "GK", "RB", "CB", "LB", "CDM", "CM", "CAM", "RM", "LM", "RW", "LW", "LWB", "CF", "ST", "CWB", "RWB" ];
+
+    positions
+        .iter()
+        .map(|pos| valid_positions.iter().position(|&v| v == *pos).unwrap())
+        .collect()
+}
+
+fn insereJogadorTrie(nodo: &mut NodoTrie, jogador: Jogador) {
+
+    let mut nodo_movel: &mut NodoTrie = nodo;
+
+    for char in jogador.long_name.to_lowercase().chars() {
+        
+        let pos = (nodo_movel.letra as usize % nodo_movel.children.tamanho);
+        let lista = &nodo_movel.children.tabela[pos];
+
+        let mut encontrado = false;
+
+        for nodo_1 in lista {
+            if nodo_1.chave() == char as usize {
+                encontrado = true;
+            }
+        }
+        
+        if !encontrado {
+            let novo_nodo: NodoTrie = NodoTrie{letra: char, fim_de_palavra: 0, children: cria_tabela_hash(30)};
+            insere_tabela_hash(&mut (nodo_movel.children), novo_nodo);
+        }
+        nodo_movel = busca_tabela_hash(&mut nodo_movel.children, char as usize).unwrap();
+    }
+    nodo_movel.fim_de_palavra = jogador.sofifa_id;
+}
+
+fn obtem_jogadores_trie(mut nodo: NodoTrie, prefixo: &str) -> Option<Vec<u32>> {
+
+    let mut nodo_movel: &mut NodoTrie = &mut nodo;
+
+    for char in prefixo.chars() {
+        
+        let pos = (char as usize % 30);
+        //println!("chave = {}, tamanho = {}", char as usize, 30);
+        //println!("pos = {}", pos);
+        let lista = &nodo_movel.children.tabela[pos];
+
+        let mut encontrado = false;
+
+
+        for nodo_1 in lista {
+            if nodo_1.chave() == char as usize {
+                encontrado = true;
+            }
+        }
+        
+        if !encontrado {
+            return None;    
+        }
+        nodo_movel = busca_tabela_hash(&mut nodo_movel.children, char as usize).unwrap();
+    }
+
+    let nodo_temp = nodo_movel.clone();
+    let mut vec_ids: Vec<u32> = Vec::new();
+    le_arvore_trie_recursiva(nodo_temp, &mut vec_ids);
+
+    return Some(vec_ids);
+}
+
+fn le_arvore_trie_recursiva(mut nodo: NodoTrie, vec: &mut Vec<u32>) {
+
+    if nodo.fim_de_palavra != 0 {
+        vec.push(nodo.fim_de_palavra);
+    }
+
+    let tabela = nodo.children.tabela;
+
+    for list in tabela {
+        for nodo_interno in list {
+            le_arvore_trie_recursiva(nodo_interno, vec);
+        }
+    }
+}
+
+fn to_bool<'a>(v: &AnyValue<'a>) -> bool {
+    if let AnyValue::Boolean(b) = v {
+        *b
+    } else {
+        panic!("not a boolean");
+    }
+}
 
 fn read_jogadores(file_path: &str) -> Result<Vec<Jogador>, String> {
     let mut rdr = Reader::from_path(file_path).unwrap();
@@ -109,19 +485,22 @@ fn read_jogadores(file_path: &str) -> Result<Vec<Jogador>, String> {
     for result in rdr.records() {
         let record = result.unwrap();
         let jogador = Jogador {
-            sofifa_id: record[0].parse::<usize>().unwrap(),
-            name: record[1].to_string(),
-            player_positions: record[2].to_string(),
+            sofifa_id: record[0].parse::<u32>().unwrap(),
+            short_name: record[1].to_string(),
+            long_name: record[2].to_string(),
+            player_positions: record[3].to_string(),
+            nationality: record[4].to_string(),
+            club_name: record[5].to_string(),
+            league_name: record[6].to_string(),
             number_ratings: 0,
-            ratings_sum: 0 as f64
+            ratings_sum: 0 as f64,
+            average_rating: 0 as f32
         };
         jogadores.push(jogador);
     }
 
     Ok(jogadores)
 }
-
-
 
 fn constroi_tabela_hash<T: Tabelavel + Clone>(tamanho: usize, vetor_itens: Vec<T>) -> TabelaHash<T>{
     let mut tabela= cria_tabela_hash(tamanho);
@@ -132,26 +511,31 @@ fn constroi_tabela_hash<T: Tabelavel + Clone>(tamanho: usize, vetor_itens: Vec<T
     return tabela;
 }
 
-
 fn cria_tabela_hash<T: Tabelavel + Clone>(tamanho: usize) -> TabelaHash<T>{
     let tabela = vec![LinkedList::<T>::new(); tamanho];
     return TabelaHash {tamanho, tabela};
 }
 
 fn insere_tabela_hash<T: Tabelavel + Clone>(tabela: &mut TabelaHash<T> , item: T) {
+    
     let chave_item = item.chave();
     let pos = (chave_item % tabela.tamanho);
+    //println!("chave = {}, tamanho = {}", chave_item, tabela.tamanho);
+    //println!("pos = {}", pos);
 
     tabela.tabela[pos].push_back(item);
 }
 
-fn busca_tabela_hash<T: Tabelavel + Clone>(tabela: &TabelaHash<T> , chave: usize) -> Option<T> {
+fn busca_tabela_hash<T: Tabelavel + Clone>(tabela: &mut TabelaHash<T> , chave: usize) -> Option<&mut T> {
+    
+    if tabela.tamanho == 0 {return None};
+    
     let pos = (chave % tabela.tamanho);
-    let lista = &tabela.tabela[pos];
+    let lista = &mut tabela.tabela[pos];
 
-    for nodo in lista {
+    for mut nodo in lista {
         if nodo.chave() == chave {
-            return Some(nodo.clone());
+            return Some(nodo);
         }
     }
 
@@ -178,7 +562,60 @@ fn atualiza_rating(tabela: &mut TabelaHash<Jogador> , chave: usize, acc_contador
         if nodo.chave() == chave {
             nodo.ratings_sum = acc_contador.acc;
             nodo.number_ratings = acc_contador.contador;
+            nodo.average_rating = (acc_contador.acc/acc_contador.contador as f64) as f32;
             break;
         }
+    }
+}
+
+fn quicksort<T: PartialOrd + Clone>(vec: &mut [T], partitioning_scheme_f: fn(&mut [T], fn(&[T]) -> usize) -> usize, pivot_selector_f: fn(&[T]) -> usize) {
+
+    if vec.len() > 1 {
+        let pivot_index: usize = partitioning_scheme_f(vec, pivot_selector_f);
+        
+        quicksort(&mut vec[..pivot_index], partitioning_scheme_f, pivot_selector_f,);
+        quicksort(&mut vec[pivot_index+1..], partitioning_scheme_f, pivot_selector_f);
+    }
+
+}
+
+
+// retorno é o índice do elemento particionador utilizado.
+fn quicksort_hoare<T: PartialOrd + Clone>(vec: &mut [T], pivot_selector_f: fn(&[T]) -> usize) -> usize {
+
+    let pivot_index = pivot_selector_f(vec);
+    vec.swap(0, pivot_index);
+    let pivot = vec[0].clone();
+
+    let mut i = 0;
+    let mut j = vec.len() - 1;
+    
+
+    while i < j {
+        while vec[j] > pivot && i < j { j -= 1 };
+        while vec[i] <= pivot && i < j { i += 1 };
+        
+        vec.swap(i, j);
+    }
+
+    vec.swap(0, j);
+
+    return i;
+    
+}
+
+
+fn get_mo3_pivot<T: PartialOrd + Clone>(vec: &[T]) -> usize {
+
+    let a = vec[0].clone();
+    let b = vec[(vec.len()-1)/2].clone();
+    let c = vec[vec.len()-1].clone();
+
+    if b <= a && a <= c {
+        return 0;
+    } else if a <= b && b <= c {
+        return (vec.len()-1)/2;
+    } else {
+        return vec.len()-1;
     }
 }

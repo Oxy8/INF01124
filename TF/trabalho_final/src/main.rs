@@ -10,8 +10,6 @@ use tabled::{Tabled, Table};
 use std::io::Write;
 
 
-
-
 #[derive(Clone)]
 struct AccContador {
     acc: f64,
@@ -183,7 +181,7 @@ fn main() {
 
     let mut arvore_trie: NodoTrie = NodoTrie{letra: '#', fim_de_palavra: 0, children: cria_tabela_hash(30)};
     for jogador in jogadores.clone() {
-        insereJogadorTrie(&mut arvore_trie, jogador);
+        insere_jogador_trie(&mut arvore_trie, jogador);
     }
 
     //=========================================================================
@@ -257,18 +255,18 @@ fn main() {
     loop {
         
         print!("Insira a consulta desejada: ");
-        std::io::stdout().flush().unwrap(); 
+        std::io::stdout().flush().unwrap();
 
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim(); // 
+        let input = input.trim();
 
         if input.starts_with("exit") { break; }
 
-        if    input.starts_with("player")
-            ||input.starts_with("user")
-            ||input.starts_with("top")
-            ||input.starts_with("tags") {
+        if    input.starts_with("player ")
+            ||input.starts_with("user ")
+            ||input.starts_with("top ")
+            ||input.starts_with("tags ") {
 
             if let Some((cmd, arg)) = input.split_once(" ") {
                 match cmd {
@@ -286,7 +284,7 @@ fn main() {
                         if let Some((posicao, len)) = arg.split_once(" ") {
                             if let Ok(num) = len.parse::<u32>() {
                                 
-                                let valid_positions = vec![ "GK", "RB", "CB", "LB", "CDM", "CM", "CAM", "RM", "LM", "RW", "LW", "LWB", "CF", "ST", "CWB", "RWB" ];
+                                let valid_positions = vec!["CAM", "CB", "CDM", "CF", "CM", "CWB", "GK", "LB", "LM", "LW", "LWB", "RB", "RM", "RW", "RWB", "ST"];
                                 let upper = posicao.to_uppercase();
                                 let inter: &str = &upper;
                                 if !(valid_positions.contains(&inter)) {
@@ -370,10 +368,12 @@ fn pesquisa_2(vec_avaliacoes: &Vec<Vec<Avaliacao>>, tabela_jogadores: &mut Tabel
     
 }
 
-fn pesquisa_3(vetor_posicoes: Vec<Vec<Jogador>>, posicao: &str, len: usize) {
+fn pesquisa_3(vetor_posicoes: Vec<Vec<Jogador>>, posicao: &str, mut len: usize) {
 
     let index = position_to_index(&[posicao]);
     let posicao = &vetor_posicoes[index[0]];
+
+    if len > posicao.len() {len = posicao.len()};
     let mut posicao2: Vec<Jogador> = Vec::new();
     for i in 0..len {
         posicao2.push(posicao[i].clone());
@@ -395,8 +395,6 @@ fn pesquisa_4(lista_tags: Vec<&str>, lista_tags_jogadores: Vec<Vec<u32>>, tabela
 
     let mut intersecao = intersect_vectors(lista_tags_jogadores_selecionadas);
     intersecao.dedup();
-
-    println!("\n{:?}\n", intersecao);
 
     let mut players: Vec<Jogador> = Vec::new();
     for id in intersecao {
@@ -469,7 +467,7 @@ fn position_to_index(positions: &[&str]) -> Vec<usize> {
         .collect()
 }
 
-fn insereJogadorTrie(nodo: &mut NodoTrie, jogador: Jogador) {
+fn insere_jogador_trie(nodo: &mut NodoTrie, jogador: Jogador) {
 
     let mut nodo_movel: &mut NodoTrie = nodo;
 
@@ -502,8 +500,7 @@ fn obtem_jogadores_trie(mut nodo: NodoTrie, prefixo: &str) -> Option<Vec<u32>> {
     for char in prefixo.chars() {
         
         let pos = (char as usize % 30);
-        //println!("chave = {}, tamanho = {}", char as usize, 30);
-        //println!("pos = {}", pos);
+
         let lista = &nodo_movel.children.tabela[pos];
 
         let mut encontrado = false;
@@ -540,14 +537,6 @@ fn le_arvore_trie_recursiva(mut nodo: NodoTrie, vec: &mut Vec<u32>) {
         for nodo_interno in list {
             le_arvore_trie_recursiva(nodo_interno, vec);
         }
-    }
-}
-
-fn to_bool<'a>(v: &AnyValue<'a>) -> bool {
-    if let AnyValue::Boolean(b) = v {
-        *b
-    } else {
-        panic!("not a boolean");
     }
 }
 
@@ -593,8 +582,6 @@ fn insere_tabela_hash<T: Tabelavel + Clone>(tabela: &mut TabelaHash<T> , item: T
     
     let chave_item = item.chave();
     let pos = (chave_item % tabela.tamanho);
-    //println!("chave = {}, tamanho = {}", chave_item, tabela.tamanho);
-    //println!("pos = {}", pos);
 
     tabela.tabela[pos].push_back(item);
 }
